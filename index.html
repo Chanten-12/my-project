@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Melodie na slova</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fff7f0; --card: rgba(255,255,255,.9); --ink: #3a2510; --muted: #a07a58;
+    --accent: #c8742a; --accent-2: #f0c040; --line: rgba(212,144,58,.3); --soft: #fff3e6;
+    --ok: #3f8a4f; --warn: #c04040;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: radial-gradient(ellipse at 0% 0%, rgba(255,210,160,.55), transparent 45%),
+    radial-gradient(ellipse at 100% 100%, rgba(255,160,180,.4), transparent 50%), var(--bg);
+    min-height: 100vh; font-family: 'Jost', sans-serif; color: var(--ink); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+  header { text-align: center; margin-bottom: 36px; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-weight: 400; font-size: clamp(36px, 8vw, 56px); line-height: 1.1; }
+  h1 em { font-weight: 500; color: var(--accent); }
+  .lead { color: var(--muted); margin-top: 10px; font-weight: 300; }
+  .card { background: var(--card); border: 1.5px solid var(--line); border-radius: 20px; padding: 24px; margin-bottom: 18px;
+    box-shadow: 0 6px 40px rgba(212,144,58,.12); }
+  .step { font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--accent); font-weight: 500; margin-bottom: 12px; display: block; }
+  .hint { font-size: 13px; color: var(--muted); font-weight: 300; line-height: 1.6; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .btn { flex: 1 1 200px; padding: 15px 18px; border-radius: 12px; border: none; cursor: pointer; font: 500 13px 'Jost', sans-serif;
+    letter-spacing: .12em; text-transform: uppercase; transition: transform .2s, opacity .2s; }
+  .btn:hover:not(:disabled) { transform: translateY(-2px); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(135deg, #c8742a, #f0c040 45%, #c06018); color: #fff8ee; box-shadow: 0 6px 24px rgba(200,116,42,.35); }
+  .btn-ghost { background: transparent; border: 1.5px solid var(--line); color: var(--accent); }
+  .btn-rec { background: #fff; border: 1.5px solid var(--line); color: var(--ink); }
+  .btn-rec.on { background: #c04040; color: #fff; border-color: #c04040; }
+  .status { margin-top: 14px; font-size: 14px; min-height: 20px; }
+  .status.err { color: var(--warn); }
+  canvas { width: 100%; height: 160px; display: block; margin-top: 16px; border-radius: 12px; background: var(--soft); }
+  .stats { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .stats b { color: var(--ink); font-weight: 500; }
+  label.f { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  textarea, select, input[type=text] { width: 100%; background: #fffaf5; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px;
+    font: 300 15px 'Jost', sans-serif; color: var(--ink); outline: none; }
+  textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
+  textarea:focus, select:focus, input[type=text]:focus { border-color: var(--accent); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .two { grid-template-columns: 1fr; } }
+  .song-title { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 28px; text-align: center; margin-bottom: 18px; }
+  .phrase { border-top: 1px solid var(--line); padding: 14px 0; }
+  .phrase:first-of-type { border-top: none; }
+  .grid { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .cell { min-width: 44px; padding: 6px 6px 5px; border-radius: 8px; background: var(--soft); text-align: center; }
+  .cell.strong { background: #fde3c2; }
+  .cell.long { box-shadow: inset 0 -3px 0 var(--accent-2); }
+  .cell .n { font-size: 10px; color: var(--muted); letter-spacing: .05em; }
+  .cell .s { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 500; min-height: 22px; }
+  .cell .s.empty { color: #d8b898; }
+  .cell .s.extra { color: var(--warn); }
+  .line-row { display: flex; gap: 8px; align-items: center; }
+  .line-row input { font-family: 'Cormorant Garamond', serif; font-size: 19px; font-style: italic; }
+  .count { font-size: 13px; white-space: nowrap; min-width: 64px; text-align: right; }
+  .count.ok { color: var(--ok); } .count.bad { color: var(--warn); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -2px; background: var(--soft); }
+  .legend .l-strong::before { background: #fde3c2; }
+  .legend .l-long::before { box-shadow: inset 0 -3px 0 var(--accent-2); }
+  .hidden { display: none; }
+  .dots span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: currentColor; animation: p 1.2s infinite; }
+  .dots span:nth-child(2) { animation-delay: .2s } .dots span:nth-child(3) { animation-delay: .4s }
+  @keyframes p { 50% { opacity: .3 } }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 30px; font-weight: 300; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Melodie <em>na slova</em></h1>
+    <p class="lead">Zahraj nebo zabruč melodii a dostaneš český text, který na ni přesně sedne.</p>
+  </header>
+
+  <section class="card">
+    <span class="step">1 · Melodie</span>
+    <p class="hint">Nahraj jednu melodii: broukání, pískání, zpěv na „la la", nebo jeden nástroj. Akordy a skladby s doprovodem rozpoznat nejdou. Mezi frázemi (budoucími verši) udělej krátkou pauzu.</p>
+    <div class="row">
+      <button class="btn btn-rec" id="recBtn">● Nahrát mikrofonem</button>
+      <button class="btn btn-ghost" id="fileBtn">Nahrát soubor</button>
+      <input type="file" id="fileInput" accept="audio/*,video/*" class="hidden" />
+    </div>
+    <div class="status" id="status"></div>
+    <div id="analysis" class="hidden">
+      <canvas id="roll"></canvas>
+      <div class="stats" id="stats"></div>
+      <div class="row">
+        <button class="btn btn-ghost" id="playBtn">▶ Přehrát rozpoznanou melodii</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card hidden" id="briefCard">
+    <span class="step">2 · O čem má text být</span>
+    <label class="f" for="theme">Téma</label>
+    <textarea id="theme" placeholder="Např. letní večer u moře, píseň pro mámu k narozeninám, ukolébavka…"></textarea>
+    <div class="two">
+      <div>
+        <label class="f" for="mood">Nálada</label>
+        <select id="mood">
+          <option value="radostna">Radostná</option>
+          <option value="melancholicka">Melancholická</option>
+          <option value="romanticka">Romantická</option>
+          <option value="hymnicka">Slavnostní</option>
+          <option value="humorna">Humorná</option>
+          <option value="detska">Dětská</option>
+          <option value="duchovni">Duchovní</option>
+        </select>
+      </div>
+      <div>
+        <label class="f" for="rhyme">Rýmy</label>
+        <select id="rhyme">
+          <option value="AABB">Sdružené (AABB)</option>
+          <option value="ABAB">Střídavé (ABAB)</option>
+          <option value="none">Bez rýmu</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" id="writeBtn">✦ Napsat text</button>
+    </div>
+    <div class="status" id="writeStatus"></div>
+  </section>
+
+  <section class="card hidden" id="resultCard">
+    <span class="step">3 · Text na melodii</span>
+    <div class="song-title" id="songTitle"></div>
+    <div class="legend"><span class="l-strong">silná doba – začátek slova</span><span class="l-long">dlouhá nota</span></div>
+    <div id="phrases"></div>
+    <div class="row">
+      <button class="btn btn-ghost" id="copyBtn">Kopírovat text</button>
+      <button class="btn btn-ghost" id="againBtn">Napsat jinou verzi</button>
+    </div>
+  </section>
+
+  <footer>Verše můžeš libovolně přepisovat – slabiky se pod notami přepočítají.</footer>
+</div>
+
+<script type="module">
+import { analyze, midiToName, midiToFreq, SAMPLE_RATE } from './melody.js';
+import { syllabifyLine } from './czech.js';
+
+const $ = (id) => document.getElementById(id);
+let result = null;     // výsledek analýzy
+let recorder = null;
+
+function setStatus(el, text, err = false, loading = false) {
+  el.className = 'status' + (err ? ' err' : '');
+  el.textContent = text;
+  if (loading) el.insertAdjacentHTML('beforeend', ' <span class="dots"><span></span><span></span><span></span></span>');
+}
+
+// ---------- vstup ----------
+$('fileBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = async (e) => {
+  const f = e.target.files[0];
+  if (f) await processAudio(await f.arrayBuffer());
+  e.target.value = '';
+};
+
+$('recBtn').onclick = async () => {
+  if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+    const chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      clearInterval(timer);
+      $('recBtn').classList.remove('on');
+      $('recBtn').textContent = '● Nahrát znovu';
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      await processAudio(await blob.arrayBuffer());
+    };
+    recorder.start();
+    const t0 = Date.now();
+    $('recBtn').classList.add('on');
+    const tick = () => { $('recBtn').textContent = `■ Zastavit (${Math.floor((Date.now() - t0) / 1000)} s)`; };
+    tick();
+    var timer = setInterval(tick, 500);
+    setStatus($('status'), 'Nahrávám… zahraj melodii a pak klikni na Zastavit.');
+  } catch (err) {
+    setStatus($('status'), 'Mikrofon není dostupný: ' + err.message, true);
+  }
+};
+
+async function processAudio(arrayBuffer) {
+  setStatus($('status'), 'Rozpoznávám tóny', false, true);
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await ctx.decodeAudioData(arrayBuffer);
+    ctx.close();
+    if (decoded.duration > 180) throw new Error('Nahrávka je delší než 3 minuty, zkrať ji prosím.');
+    const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * SAMPLE_RATE), SAMPLE_RATE);
+    const src = off.createBufferSource();
+    src.buffer = decoded;
+    src.connect(off.destination);
+    src.start();
+    const rendered = await off.startRendering();
+    await new Promise((r) => setTimeout(r, 30)); // nech prohlížeč vykreslit stav
+    result = analyze(rendered.getChannelData(0), SAMPLE_RATE);
+  } catch (err) {
+    setStatus($('status'), 'Zvuk se nepodařilo zpracovat: ' + err.message, true);
+    return;
+  }
+  if (!result.notes.length) {
+    setStatus($('status'), 'Nenašla jsem žádné tóny. Zkus nahrávat hlasitěji a blíž k mikrofonu.', true);
+    return;
+  }
+  setStatus($('status'), '');
+  showAnalysis();
+}
+
+// ---------- zobrazení melodie ----------
+function showAnalysis() {
+  $('analysis').classList.remove('hidden');
+  $('briefCard').classList.remove('hidden');
+  $('resultCard').classList.add('hidden');
+  const { notes, phrases } = result;
+  $('stats').innerHTML = '';
+  [['Tónů', notes.length], ['Frází (veršů)', phrases.length],
+   ['Slabik ve verších', phrases.map((p) => p.syllables).join(' · ')],
+   ['Rozsah', midiToName(Math.min(...notes.map((n) => n.midi))) + ' – ' + midiToName(Math.max(...notes.map((n) => n.midi)))]]
+    .forEach(([k, v]) => { const s = document.createElement('span'); s.append(k + ': '); const b = document.createElement('b'); b.textContent = v; s.append(b); $('stats').append(s); });
+  drawRoll();
+}
+
+function drawRoll() {
+  const c = $('roll');
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  c.width = w * dpr; c.height = h * dpr;
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  const notes = result.notes;
+  const t0 = notes[0].start, t1 = notes[notes.length - 1].end;
+  const lo = Math.min(...notes.map((n) => n.midi)) - 2, hi = Math.max(...notes.map((n) => n.midi)) + 2;
+  const x = (t) => 8 + ((t - t0) / (t1 - t0 || 1)) * (w - 16);
+  const y = (m) => h - 10 - ((m - lo) / (hi - lo)) * (h - 20);
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(212,144,58,.12)';
+  for (let m = lo; m <= hi; m++) { g.beginPath(); g.moveTo(0, y(m)); g.lineTo(w, y(m)); g.stroke(); }
+  result.phrases.forEach((p, i) => {
+    if (i === 0) return;
+    const xx = x(p.notes[0].start) - 3;
+    g.strokeStyle = 'rgba(200,116,42,.45)'; g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(xx, 0); g.lineTo(xx, h); g.stroke(); g.setLineDash([]);
+  });
+  const bh = Math.max(4, Math.min(10, (h - 20) / (hi - lo)));
+  result.phrases.forEach((p) => p.notes.forEach((n) => {
+    g.fillStyle = n.strong ? '#c8742a' : '#e8b070';
+    const xs = x(n.start), xe = x(n.end);
+    g.beginPath();
+    g.roundRect(xs, y(n.midi) - bh / 2, Math.max(3, xe - xs - 2), bh, 3);
+    g.fill();
+  }));
+}
+window.addEventListener('resize', () => result && result.notes.length && drawRoll());
+
+$('playBtn').onclick = () => {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const base = ctx.currentTime + 0.1 - result.notes[0].start;
+  for (const n of result.notes) {
+    const o = ctx.createOscillator(), gn = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.value = midiToFreq(n.midi);
+    const s = base + n.start, e = base + n.end;
+    gn.gain.setValueAtTime(0, s);
+    gn.gain.linearRampToValueAtTime(0.25, s + 0.02);
+    gn.gain.setValueAtTime(0.25, Math.max(s + 0.02, e - 0.05));
+    gn.gain.linearRampToValueAtTime(0, e);
+    o.connect(gn).connect(ctx.destination);
+    o.start(s); o.stop(e + 0.05);
+  }
+  const end = base + result.notes[result.notes.length - 1].end;
+  setTimeout(() => ctx.close(), (end - ctx.currentTime + 0.5) * 1000);
+};
+
+// ---------- psaní textu ----------
+$('writeBtn').onclick = writeLyrics;
+$('againBtn').onclick = writeLyrics;
+
+async function writeLyrics() {
+  const btn = $('writeBtn');
+  btn.disabled = true; $('againBtn').disabled = true;
+  setStatus($('writeStatus'), 'Skládám text a ladím slabiky', false, true);
+  try {
+    const r = await fetch('/api/lyrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phrases: result.phrases.map((p) => ({ syllables: p.syllables, pattern: p.pattern })),
+        theme: $('theme').value.trim(),
+        mood: $('mood').value,
+        rhyme: $('rhyme').value,
+      }),
+    });
+    const data = await r.json().catch(() => ({ error: 'Server neodpověděl (' + r.status + ').' }));
+    if (!r.ok || data.error) throw new Error(data.error || 'Neznámá chyba');
+    setStatus($('writeStatus'), '');
+    showLyrics(data);
+  } catch (err) {
+    setStatus($('writeStatus'), 'Text se nepodařilo napsat: ' + err.message, true);
+  } finally {
+    btn.disabled = false; $('againBtn').disabled = false;
+  }
+}
+
+function showLyrics(data) {
+  $('resultCard').classList.remove('hidden');
+  $('songTitle').textContent = data.title || '';
+  const box = $('phrases');
+  box.innerHTML = '';
+  result.phrases.forEach((p, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'phrase';
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    const row = document.createElement('div');
+    row.className = 'line-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = data.lines[i] || '';
+    input.setAttribute('aria-label', 'Verš ' + (i + 1));
+    const count = document.createElement('span');
+    count.className = 'count';
+    row.append(input, count);
+    wrap.append(grid, row);
+    box.append(wrap);
+    const render = () => renderPhrase(p, input.value, grid, count);
+    input.addEventListener('input', render);
+    render();
+  });
+  $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// slabiky pod noty: přebývající slabiky se přidají k poslední notě (červeně)
+function renderPhrase(phrase, line, grid, count) {
+  const syl = syllabifyLine(line);
+  grid.innerHTML = '';
+  phrase.notes.forEach((n, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (n.strong ? ' strong' : '') + (n.long ? ' long' : '');
+    const nn = document.createElement('div');
+    nn.className = 'n';
+    nn.textContent = midiToName(n.midi);
+    const s = document.createElement('div');
+    s.className = 's';
+    if (syl[i]) {
+      s.textContent = syl[i].text + (syl[i].wordEnd ? '' : '-');
+    } else {
+      s.textContent = '·'; s.classList.add('empty');
+    }
+    if (i === phrase.notes.length - 1 && syl.length > phrase.notes.length) {
+      const extra = document.createElement('span');
+      extra.className = 'extra';
+      extra.textContent = ' +' + syl.slice(phrase.notes.length).map((x) => x.text).join('');
+      s.append(extra);
+    }
+    cell.append(nn, s);
+    grid.append(cell);
+  });
+  const ok = syl.length === phrase.syllables;
+  count.className = 'count ' + (ok ? 'ok' : 'bad');
+  count.textContent = `${syl.length}/${phrase.syllables} ${ok ? '✓' : ''}`;
+}
+
+$('copyBtn').onclick = async () => {
+  const lines = [...document.querySelectorAll('#phrases input')].map((i) => i.value);
+  const text = ($('songTitle').textContent ? $('songTitle').textContent + '\n\n' : '') + lines.join('\n');
+  try { await navigator.clipboard.writeText(text); $('copyBtn').textContent = 'Zkopírováno ✓'; }
+  catch { $('copyBtn').textContent = 'Kopírování nejde'; }
+  setTimeout(() => { $('copyBtn').textContent = 'Kopírovat text'; }, 1800);
+};
+</script>
+</body>
+</html>
