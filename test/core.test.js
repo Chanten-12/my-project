@@ -63,3 +63,22 @@ test('ticho nevrací žádné tóny', () => {
   const { notes } = analyze(new Float32Array(SAMPLE_RATE));
   assert.equal(notes.length, 0);
 });
+
+test('charakter melodie: tónina, tvar a závěr', async () => {
+  const { describe } = await import('../melody.js');
+  // C dur stupnice nahoru a zpět dolů na C, pak fráze stoupající na G (otevřený konec)
+  const up = [60, 62, 64, 65, 67, 65, 64, 62, 60].map((m) => [m, 0.3]);
+  up[up.length - 1][1] = 0.8;
+  const r1 = analyze(synth(up));
+  const d1 = describe(r1);
+  assert.equal(d1.key.name, 'C dur');
+  assert.equal(d1.contour, 'oblouk');
+  assert.equal(d1.ending, 'uzavřený');
+  assert.match(d1.traits.pohyb, /krokový/);
+
+  // a moll, končí na E nahoře
+  const minor = [57, 60, 64, 62, 60, 59, 57, 64].map((m) => [m, 0.35]);
+  const d2 = describe(analyze(synth(minor)));
+  assert.equal(d2.key.name, 'a moll');
+  assert.equal(d2.ending, 'pootevřený');
+});

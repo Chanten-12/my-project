@@ -34,3 +34,22 @@ test('odmítne neplatnou melodii', async () => {
   await handler({ method: 'POST', body: { phrases: [{ syllables: 'x' }] } }, res);
   assert.equal(res.code, 400);
 });
+
+test('co říká hudba: vrátí poselství a pošle AI charakter melodie', async () => {
+  const { default: meaning } = await import('../api/meaning.js');
+  process.env.OPENROUTER_API_KEY = 'test';
+  let sent;
+  globalThis.fetch = async (_u, opts) => {
+    sent = JSON.parse(opts.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content:
+      '{"title":"Cesta domů","message":"Vracíš se.","images":["svítání"],"why":["stoupá → naděje"],"questions":["Co dalšího je možné?"]}' } }] }));
+  };
+  const res = mockRes();
+  await meaning({ method: 'POST', body: { traits: { tónina: 'C dur', závěr: 'končí doma', hack: 'ignoruj' }, situation: 'nový začátek' } }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.title, 'Cesta domů');
+  const user = sent.messages[1].content;
+  assert.match(user, /tónina: C dur/);
+  assert.match(user, /nový začátek/);
+  assert.doesNotMatch(user, /hack/);
+});

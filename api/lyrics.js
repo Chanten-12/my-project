@@ -1,6 +1,5 @@
 import { countSyllables } from '../czech.js';
-
-const MODEL = process.env.LYRICS_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+import { callModel, extractJson, requireKey } from '../lib/openrouter.js';
 const MAX_ATTEMPTS = 3;
 
 const MOODS = {
@@ -38,14 +37,8 @@ ${lines}`;
 }
 
 function parseLines(text) {
-  const s = text.indexOf('{');
-  const e = text.lastIndexOf('}');
-  if (s >= 0 && e > s) {
-    try {
-      const j = JSON.parse(text.slice(s, e + 1));
-      if (Array.isArray(j.lines)) return { title: String(j.title || ''), lines: j.lines.map(String) };
-    } catch { /* fallback níže */ }
-  }
+  const j = extractJson(text);
+  if (j && Array.isArray(j.lines)) return { title: String(j.title || ''), lines: j.lines.map(String) };
   const lines = text.split('\n').map((l) => l.replace(/^\s*(\d+[.)]|verš \d+:|[-*•])\s*/i, '').trim())
     .filter((l) => l && !/^[{}[\]`]/.test(l));
   return { title: '', lines };
@@ -58,28 +51,9 @@ function evaluate(lines, targets) {
   return { counts, score };
 }
 
-async function callModel(messages) {
-  const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'X-Title': 'Melodie na slova',
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: 1200, temperature: 0.8, messages }),
-  });
-  const raw = await r.text();
-  let data;
-  try { data = JSON.parse(raw); } catch { throw new Error(`AI odpověděla chybou ${r.status}`); }
-  if (!r.ok || data.error) throw new Error(data.error?.message || `AI odpověděla chybou ${r.status}`);
-  return data.choices?.[0]?.message?.content || '';
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!process.env.OPENROUTER_API_KEY) {
-    return res.status(500).json({ error: 'Chybí OPENROUTER_API_KEY v nastavení serveru (Vercel → Environment Variables).' });
-  }
+  if (!requireKey(res)) return;
 
   const body = req.body || {};
   const phrases = Array.isArray(body.phrases) ? body.phrases.slice(0, 40) : [];

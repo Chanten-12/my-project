@@ -173,6 +173,106 @@ function detectOnsets(samples, sr) {
   return out;
 }
 
+// ---------- hudební charakter melodie ----------
+
+const KEY_NAMES = ['C', 'Cis', 'D', 'Es', 'E', 'F', 'Fis', 'G', 'As', 'A', 'B', 'H'];
+const MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+function correlate(a, b) {
+  const ma = a.reduce((s, v) => s + v, 0) / a.length;
+  const mb = b.reduce((s, v) => s + v, 0) / b.length;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < a.length; i++) {
+    num += (a[i] - ma) * (b[i] - mb);
+    da += (a[i] - ma) ** 2;
+    db += (b[i] - mb) ** 2;
+  }
+  return da && db ? num / Math.sqrt(da * db) : 0;
+}
+
+// Tónina podle Krumhansl-Schmuckler (histogram tónů vážený délkou).
+export function detectKey(notes) {
+  const hist = new Array(12).fill(0);
+  for (const n of notes) hist[((n.midi % 12) + 12) % 12] += n.end - n.start;
+  let best = { r: -2 };
+  for (let tonic = 0; tonic < 12; tonic++) {
+    for (const [mode, prof] of [['dur', MAJOR], ['moll', MINOR]]) {
+      const rotated = prof.map((_, i) => prof[(i - tonic + 12) % 12]);
+      const r = correlate(hist, rotated);
+      if (r > best.r) best = { r, tonic, mode };
+    }
+  }
+  const name = KEY_NAMES[best.tonic];
+  return {
+    tonic: best.tonic,
+    mode: best.mode,
+    name: best.mode === 'dur' ? `${name} dur` : `${name.toLowerCase()} moll`,
+    confidence: Math.round(Math.max(0, best.r) * 100) / 100,
+  };
+}
+
+function contourOf(ns) {
+  const first = ns[0].midi, last = ns[ns.length - 1].midi;
+  let maxI = 0, minI = 0;
+  ns.forEach((n, i) => { if (n.midi > ns[maxI].midi) maxI = i; if (n.midi < ns[minI].midi) minI = i; });
+  const peak = ns[maxI].midi, low = ns[minI].midi;
+  if (maxI > 0 && maxI < ns.length - 1 && peak - first >= 2 && peak - last >= 2) return 'oblouk';
+  if (minI > 0 && minI < ns.length - 1 && first - low >= 2 && last - low >= 2) return 'údolí';
+  if (last - first >= 2) return 'stoupá';
+  if (first - last >= 2) return 'klesá';
+  return 'drží se';
+}
+
+// Popis charakteru melodie: čísla i česká slova pro AI a pro zobrazení.
+export function describe({ notes, phrases }) {
+  if (!notes.length) return null;
+  const key = detectKey(notes);
+  const durs = notes.map((n) => n.end - n.start);
+  const span = phrases.reduce((s, p) => s + (p.notes[p.notes.length - 1].end - p.notes[0].start), 0);
+  const notesPerSec = notes.length / (span || 1);
+  const meanDur = durs.reduce((s, d) => s + d, 0) / durs.length;
+  const cv = Math.sqrt(durs.reduce((s, d) => s + (d - meanDur) ** 2, 0) / durs.length) / meanDur;
+  const midis = notes.map((n) => n.midi);
+  const range = Math.max(...midis) - Math.min(...midis);
+  const register = median(midis);
+
+  const intervals = [];
+  for (const p of phrases) for (let i = 1; i < p.notes.length; i++) intervals.push(p.notes[i].midi - p.notes[i - 1].midi);
+  const abs = intervals.map(Math.abs);
+  const steps = abs.filter((d) => d >= 1 && d <= 2).length;
+  const leaps = abs.filter((d) => d >= 5).length;
+  const repeats = abs.filter((d) => d === 0).length;
+  const largestLeap = abs.length ? Math.max(...abs) : 0;
+
+  const contours = phrases.map((p) => contourOf(p.notes));
+  const overall = notes.length > 1 ? contourOf(notes) : 'drží se';
+  const lastPc = ((notes[notes.length - 1].midi % 12) + 12) % 12;
+  const fromTonic = (lastPc - key.tonic + 12) % 12;
+  const ending = fromTonic === 0 ? 'uzavřený' : (fromTonic === 7 || fromTonic === 3 || fromTonic === 4) ? 'pootevřený' : 'otevřený';
+
+  const n = intervals.length || 1;
+  const traits = {
+    tónina: `${key.name} (${key.mode === 'dur' ? 'jasná, světlá' : 'tmavší, niternější'})`,
+    tempo: notesPerSec < 1.6 ? 'pomalé, rozvážné' : notesPerSec < 3.5 ? 'klidně plynoucí' : 'živé, rychlé',
+    výška: register < 55 ? 'hluboko' : register > 74 ? 'vysoko' : 've středu',
+    rozsah: range <= 5 ? 'úzký, skromný' : range <= 12 ? 'střední' : 'široký, rozmáchlý',
+    pohyb: steps / n >= 0.6 ? 'krokový, plynulý' : leaps / n >= 0.3 ? 'skokový, odvážný' : 'kombinuje kroky a skoky',
+    opakování: repeats / n >= 0.3 ? 'hodně opakovaných tónů – naléhavé, mluvní' : 'málo opakování',
+    rytmus: cv < 0.25 ? 'pravidelný, stálý' : cv < 0.6 ? 'mírně proměnlivý' : 'volný, proměnlivý',
+    tvar: overall,
+    'tvar frází': contours.join(', '),
+    závěr: ending === 'uzavřený' ? 'končí na základním tónu – doma, uzavřeně'
+      : ending === 'pootevřený' ? 'končí blízko domova – pootevřeně' : 'končí mimo základní tón – otevřeně, jako otázka',
+  };
+
+  return {
+    key, notesPerSec: Math.round(notesPerSec * 10) / 10, range, largestLeap,
+    stepShare: Math.round((steps / n) * 100) / 100, leapShare: Math.round((leaps / n) * 100) / 100,
+    contour: overall, phraseContours: contours, ending, traits,
+  };
+}
+
 function splitPhrases(notes) {
   const groups = [];
   let g = [];

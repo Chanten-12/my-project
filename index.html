@@ -68,6 +68,17 @@
   .dots span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: currentColor; animation: p 1.2s infinite; }
   .dots span:nth-child(2) { animation-delay: .2s } .dots span:nth-child(3) { animation-delay: .4s }
   @keyframes p { 50% { opacity: .3 } }
+  .traits { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin-top: 16px; font-size: 14px; }
+  .traits dt { color: var(--muted); }
+  .traits dd { color: var(--ink); }
+  .message { font-family: 'Cormorant Garamond', serif; font-size: 22px; line-height: 1.55; font-style: italic; text-align: center; margin-bottom: 18px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+  .chips span { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .sub { font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--accent); font-weight: 500; margin: 20px 0 10px; }
+  .why { padding-left: 18px; font-size: 15px; line-height: 1.6; font-weight: 300; }
+  .why li { margin-bottom: 6px; }
+  .q { background: #fff; border: 1.5px solid var(--line); border-left: 4px solid var(--accent-2); border-radius: 12px; padding: 12px 16px; margin-bottom: 8px;
+    font-family: 'Cormorant Garamond', serif; font-size: 20px; font-style: italic; }
   footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 30px; font-weight: 300; }
 </style>
 </head>
@@ -75,7 +86,7 @@
 <div class="wrap">
   <header>
     <h1>Melodie <em>na slova</em></h1>
-    <p class="lead">Zahraj nebo zabruč melodii a dostaneš český text, který na ni přesně sedne.</p>
+    <p class="lead">Zahraj nebo zabruč melodii. Zjistíš, co ti hudba říká – a můžeš k ní dostat i text písně.</p>
   </header>
 
   <section class="card">
@@ -90,14 +101,38 @@
     <div id="analysis" class="hidden">
       <canvas id="roll"></canvas>
       <div class="stats" id="stats"></div>
+      <div class="traits" id="traits"></div>
       <div class="row">
         <button class="btn btn-ghost" id="playBtn">▶ Přehrát rozpoznanou melodii</button>
       </div>
     </div>
   </section>
 
+  <section class="card hidden" id="meaningCard">
+    <span class="step">2 · Co říká hudba</span>
+    <label class="f" for="situation">Na co se ptáš? (nepovinné)</label>
+    <textarea id="situation" placeholder="Např. co mi tahle melodie říká o mém novém začátku… Nebo nech prázdné."></textarea>
+    <div class="row">
+      <button class="btn btn-primary" id="meaningBtn">✦ Co říká hudba</button>
+    </div>
+    <div class="status" id="meaningStatus"></div>
+    <div id="meaningResult" class="hidden">
+      <div class="song-title" id="mTitle"></div>
+      <p class="message" id="mMessage"></p>
+      <div class="chips" id="mImages"></div>
+      <h3 class="sub">Proč to tak zní</h3>
+      <ul class="why" id="mWhy"></ul>
+      <h3 class="sub">Otázky, které melodie otevírá</h3>
+      <div id="mQuestions"></div>
+      <div class="row">
+        <button class="btn btn-ghost" id="mCopyBtn">Kopírovat poselství</button>
+        <button class="btn btn-ghost" id="mAgainBtn">Zeptat se znovu</button>
+      </div>
+    </div>
+  </section>
+
   <section class="card hidden" id="briefCard">
-    <span class="step">2 · O čem má text být</span>
+    <span class="step">3 · Text písně na melodii (volitelné)</span>
     <label class="f" for="theme">Téma</label>
     <textarea id="theme" placeholder="Např. letní večer u moře, píseň pro mámu k narozeninám, ukolébavka…"></textarea>
     <div class="two">
@@ -129,7 +164,7 @@
   </section>
 
   <section class="card hidden" id="resultCard">
-    <span class="step">3 · Text na melodii</span>
+    <span class="step">Text na melodii</span>
     <div class="song-title" id="songTitle"></div>
     <div class="legend"><span class="l-strong">silná doba – začátek slova</span><span class="l-long">dlouhá nota</span></div>
     <div id="phrases"></div>
@@ -143,11 +178,12 @@
 </div>
 
 <script type="module">
-import { analyze, midiToName, midiToFreq, SAMPLE_RATE } from './melody.js';
+import { analyze, describe, midiToName, midiToFreq, SAMPLE_RATE } from './melody.js';
 import { syllabifyLine } from './czech.js';
 
 const $ = (id) => document.getElementById(id);
 let result = null;     // výsledek analýzy
+let character = null;  // hudební charakter melodie
 let recorder = null;
 
 function setStatus(el, text, err = false, loading = false) {
@@ -224,7 +260,19 @@ async function processAudio(arrayBuffer) {
 function showAnalysis() {
   $('analysis').classList.remove('hidden');
   $('briefCard').classList.remove('hidden');
+  $('meaningCard').classList.remove('hidden');
   $('resultCard').classList.add('hidden');
+  $('meaningResult').classList.add('hidden');
+  character = describe(result);
+  const dl = document.createElement('dl');
+  dl.className = 'traits';
+  for (const [k, v] of Object.entries(character.traits)) {
+    const dt = document.createElement('dt'); dt.textContent = k[0].toUpperCase() + k.slice(1);
+    const dd = document.createElement('dd'); dd.textContent = v;
+    dl.append(dt, dd);
+  }
+  $('traits').replaceWith(dl);
+  dl.id = 'traits';
   const { notes, phrases } = result;
   $('stats').innerHTML = '';
   [['Tónů', notes.length], ['Frází (veršů)', phrases.length],
@@ -283,6 +331,46 @@ $('playBtn').onclick = () => {
   }
   const end = base + result.notes[result.notes.length - 1].end;
   setTimeout(() => ctx.close(), (end - ctx.currentTime + 0.5) * 1000);
+};
+
+// ---------- co říká hudba ----------
+$('meaningBtn').onclick = readMeaning;
+$('mAgainBtn').onclick = readMeaning;
+
+async function readMeaning() {
+  $('meaningBtn').disabled = true; $('mAgainBtn').disabled = true;
+  setStatus($('meaningStatus'), 'Naslouchám melodii', false, true);
+  try {
+    const r = await fetch('/api/meaning', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ traits: character.traits, situation: $('situation').value.trim() }),
+    });
+    const data = await r.json().catch(() => ({ error: 'Server neodpověděl (' + r.status + ').' }));
+    if (!r.ok || data.error) throw new Error(data.error || 'Neznámá chyba');
+    setStatus($('meaningStatus'), '');
+    $('mTitle').textContent = data.title;
+    $('mMessage').textContent = data.message;
+    const fill = (el, items, make) => { el.innerHTML = ''; items.forEach((t) => el.append(make(t))); };
+    const node = (tag, cls) => (t) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = t; return e; };
+    fill($('mImages'), data.images, node('span'));
+    fill($('mWhy'), data.why, node('li'));
+    fill($('mQuestions'), data.questions, node('div', 'q'));
+    $('meaningResult').classList.remove('hidden');
+    $('meaningResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    setStatus($('meaningStatus'), 'Nepodařilo se: ' + err.message, true);
+  } finally {
+    $('meaningBtn').disabled = false; $('mAgainBtn').disabled = false;
+  }
+}
+
+$('mCopyBtn').onclick = async () => {
+  const q = [...document.querySelectorAll('#mQuestions .q')].map((e) => '– ' + e.textContent).join('\n');
+  const text = `${$('mTitle').textContent}\n\n${$('mMessage').textContent}\n\n${q}`;
+  try { await navigator.clipboard.writeText(text); $('mCopyBtn').textContent = 'Zkopírováno ✓'; }
+  catch { $('mCopyBtn').textContent = 'Kopírování nejde'; }
+  setTimeout(() => { $('mCopyBtn').textContent = 'Kopírovat poselství'; }, 1800);
 };
 
 // ---------- psaní textu ----------
